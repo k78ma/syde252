@@ -16,10 +16,16 @@ def define_frequency_bands(N, min_freq=100, max_freq=8000):
 ### Bandpass Filter
 ### FIR filter is used because it is linear phase and stable but may require higher filter order
 ### IIR filter are more computationally efficient (lower order for the same performance) but can have nonlinear phase responses, which might affect the signal.
-def create_bandpass_filter(frequencies, samplerate, filter_type='FIR', order=4):
+def create_bandpass_filter(frequencies, samplerate, filter_type='IIR', order=4):
     low, high = frequencies
+
+    nyquist = 0.5 * samplerate
+
+    low_normalized = max(min(low / nyquist, 0.99), 0.01) # Avoid boundaries to avoid issues
+    high_normalized = max(min(high / nyquist, 0.99), 0.01)
+
     if filter_type == 'IIR':
-        b, a = butter(order, [low / (0.5 * samplerate), high / (0.5 * samplerate)], btype='bandpass')
+        b, a = butter(order, [low_normalized, high_normalized], btype='bandpass')
         return lambda data: lfilter(b, a, data)
     elif filter_type == 'FIR':
         # Ensure the frequencies are within the valid range
@@ -28,7 +34,6 @@ def create_bandpass_filter(frequencies, samplerate, filter_type='FIR', order=4):
         b = firwin(order, [low, high], pass_zero=False, fs=samplerate)
         return lambda data: np.convolve(data, b, mode='same')
 
-    
 
 ### Rectify by taking absolute value
 def rectify_signal(signal):
@@ -40,7 +45,7 @@ def create_lowpass_filter(cutoff, samplerate, filter_type='FIR', order=4):
         b, a = butter(order, cutoff / (0.5 * samplerate))
         return lambda data: lfilter(b, a, data)
     elif filter_type == 'FIR':
-        # Prevent the cutoff frequency from going above Nyquist frequency
+        # Prevent the cutoff frequency from going above max frequency
         cutoff = min(cutoff, samplerate / 2 - 1)
         b = firwin(order, cutoff, fs=samplerate)
         return lambda data: np.convolve(data, b, mode='same')
@@ -62,18 +67,18 @@ def plot_waveform_samplenumber(data, title):
 
 data, samplerate = get_audio_info('downsampled_bohemian.wav')   
 
-# Step 1: Filter the sound with the passband bank
+# Filter the sound with the passband bank
 N = 10  # Adjust as needed
 bands = define_frequency_bands(N)
 filtered_signals = [create_bandpass_filter(band, samplerate)(data) for band in bands]
 
-# Step 2: Plot the output signals of the lowest and highest frequency channels
+# Plot the output signals of the lowest and highest frequency channels
 plot_waveform_samplenumber(filtered_signals[0], "Output Signal of the Lowest Frequency Channel")   
 plot_waveform_samplenumber(filtered_signals[-1], "Output Signal of the Highest Frequency Channel")
 
-# Steps 3 & 4: Rectify and extract envelopes
+# Rectify and extract envelopes
 envelopes = [extract_envelope(signal, samplerate) for signal in filtered_signals]
 
-# Step 5: Plot the extracted envelopes
+# Plot the extracted envelopes
 plot_waveform_samplenumber(envelopes[0], "Extracted Envelope of the Lowest Frequency Channel")   
 plot_waveform_samplenumber(envelopes[-1], "Extracted Envelope of the Highest Frequency Channel")
