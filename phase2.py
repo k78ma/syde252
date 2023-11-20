@@ -1,6 +1,7 @@
 from phase1 import get_audio_info, process_and_analyze_audio
 import numpy as np
 from scipy.signal import butter, firwin, lfilter
+from scipy.signal import firwin, filtfilt, get_window
 import matplotlib.pyplot as plt
 
 #### DEFINE FREQUENCY BANDS FROM 100 Hz to 8 kHz
@@ -40,22 +41,25 @@ def rectify_signal(signal):
     return np.abs(signal)
 
 ### Lowpass filter
-def create_lowpass_filter(cutoff, samplerate, filter_type='FIR', order=4):
-    if filter_type == 'IIR':
-        b, a = butter(order, cutoff / (0.5 * samplerate))
-        return lambda data: lfilter(b, a, data)
-    elif filter_type == 'FIR':
-        # Prevent the cutoff frequency from going above max frequency
-        cutoff = min(cutoff, samplerate / 2 - 1)
-        b = firwin(order, cutoff, fs=samplerate)
-        return lambda data: np.convolve(data, b, mode='same')
+def create_lowpass_filter(cutoff, samplerate, filter_type='FIR', order=100):
+    # Normalized cutoff frequency
+    normalized_cutoff = cutoff / (0.5 * samplerate)
 
+    if filter_type == 'FIR':
+        # Pass a string or tuple for the window type directly to firwin
+        b = firwin(order+1, normalized_cutoff, window='hamming', pass_zero='lowpass', fs=samplerate)
+        # Use filtfilt to apply the filter forward and backward
+        return lambda data: filtfilt(b, [1], data)
+    else:
+        # Implementation for IIR filter if needed
+        b, a = butter(order, normalized_cutoff, btype='low')
+        return lambda data: filtfilt(b, a, data)
 
-### Extract envelope
-def extract_envelope(signal, samplerate, filter_type='FIR', order=4):
-    rectified_signal = rectify_signal(signal)
-    lowpass = create_lowpass_filter(400, samplerate, filter_type, order)
-    return lowpass(rectified_signal)
+def extract_envelope(signal, samplerate, filter_type='FIR', order=100):
+    rectified_signal = np.abs(signal)  # Ensure rectification is correct
+    lowpass_filter = create_lowpass_filter(400, samplerate, filter_type, order)
+    return lowpass_filter(rectified_signal)
+
 
 def plot_waveform_samplenumber(data, title):
     plt.figure(figsize=(10, 4))
